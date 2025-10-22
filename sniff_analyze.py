@@ -34,49 +34,67 @@ from scapy.packet import Packet
 from tqdm import tqdm
 
 # ----------------------
-# Helper utilities
+# CLI and main
 # ----------------------
-def pretty_bytes(n: int) -> str:
-    for unit in ['B','KB','MB','GB']:
-        if n < 1024.0:
-            return f"{n:.1f}{unit}"
-        n /= 1024.0
-    return f"{n:.1f}TB"
+def interactive_prompts():
+    iface = input("Interface (blank for default): ").strip() or None
+    bpf = input("BPF filter (leave blank to use simple filters): ").strip() or None
+    proto = src = dst = sport = dport = None
+    if not bpf:
+        proto = input("Proto (tcp/udp/ip) or blank: ").strip() or None
+        src = input("Source IP or blank: ").strip() or None
+        dst = input("Dest IP or blank: ").strip() or None
+        sport = input("Source port or blank: ").strip() or None
+        dport = input("Dest port or blank: ").strip() or None
+    out = input("Save to pcap filename (leave blank to skip): ").strip() or None
+    return iface, bpf, proto, src, dst, sport, dport, out
 
-def extract_http_from_payload(payload_bytes: bytes):
-    try:
-        s = payload_bytes.decode('utf-8', errors='replace')
-    except Exception:
-        return None
-    if s.startswith(('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'OPTIONS ', 'HTTP/')):
-        first_line = s.splitlines()[0]
-        return first_line if len(first_line) < 300 else first_line[:300] + '...'
-    if 'HTTP/1.' in s or 'Host:' in s and '\r\n' in s:
-        fl = s.splitlines()[0] if s.splitlines() else s
-        return fl[:300]
-    return None
-
-def packet_summary(pkt: Packet, idx: int = None):
-    ts = datetime.fromtimestamp(pkt.time).strftime("%H:%M:%S.%f")[:-3]
-    length = len(pkt)
-    if IP in pkt:
-        ip = pkt[IP]
-        proto = "IP"
-        extra = ""
-        if TCP in pkt:
-            proto = "TCP"
-            extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
-        elif UDP in pkt:
-            proto = "UDP"
-            extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
-        elif ICMP in pkt:
-            proto = "ICMP"
-        s = f"{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B"
-    else:
-        s = f"{ts} NON-IP {length}B"
-    if idx is not None:
-        return f"[{idx}] {s}"
-    return s
+# ----------------------
+# Filters
+# ----------------------
+def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
+    proto = proto.lower() if proto else None
+    def lfilter(pkt):
+        try:
+            if IP not in pkt:
+                # if user asked for non-IP filters, drop non-IP
+                if proto or src or dst or sport or dport:
+                    return False
+                return True
+            ip = pkt[IP]
+            if src and ip.src != src:
+                return False
+            if dst and ip.dst != dst:
+                return False
+            if proto:
+                if proto == 'tcp' and TCP not in pkt:
+                    return False
+                if proto == 'udp' and UDP not in pkt:
+                    return False
+                if proto == 'ip' and IP not in pkt:
+                    return False
+            if sport:
+                try:
+                    s = int(sport)
+                except:
+                    return False
+                if TCP in pkt and pkt[TCP].sport != s:
+                    return False
+                if UDP in pkt and pkt[UDP].sport != s:
+                    return False
+            if dport:
+                try:
+                    d = int(dport)
+                except:
+                    return False
+                if TCP in pkt and pkt[TCP].dport != d:
+                    return False
+                if UDP in pkt and pkt[UDP].dport != d:
+                    return False
+            return True
+        except Exception:
+            return False
+    return lfilter
 
 # ----------------------
 # Analyzer
@@ -151,53 +169,6 @@ class Analyzer:
             print("\nHTTP-like payloads (sample):")
             for ts,src,dst,sc in snap['http_candidates']:
                 print(f"  {ts} {src} -> {dst}  {sc}")
-
-# ----------------------
-# Filters
-# ----------------------
-def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
-    proto = proto.lower() if proto else None
-    def lfilter(pkt):
-        try:
-            if IP not in pkt:
-                # if user asked for non-IP filters, drop non-IP
-                if proto or src or dst or sport or dport:
-                    return False
-                return True
-            ip = pkt[IP]
-            if src and ip.src != src:
-                return False
-            if dst and ip.dst != dst:
-                return False
-            if proto:
-                if proto == 'tcp' and TCP not in pkt:
-                    return False
-                if proto == 'udp' and UDP not in pkt:
-                    return False
-                if proto == 'ip' and IP not in pkt:
-                    return False
-            if sport:
-                try:
-                    s = int(sport)
-                except:
-                    return False
-                if TCP in pkt and pkt[TCP].sport != s:
-                    return False
-                if UDP in pkt and pkt[UDP].sport != s:
-                    return False
-            if dport:
-                try:
-                    d = int(dport)
-                except:
-                    return False
-                if TCP in pkt and pkt[TCP].dport != d:
-                    return False
-                if UDP in pkt and pkt[UDP].dport != d:
-                    return False
-            return True
-        except Exception:
-            return False
-    return lfilter
 
 # ----------------------
 # Sniffer Controller
@@ -365,22 +336,53 @@ def command_thread_fn(controller: SnifferController):
             print("Unknown command. Valid: start stop status save detail quit")
 
 # ----------------------
-# CLI and main
+# Helper utilities
 # ----------------------
-def interactive_prompts():
-    iface = input("Interface (blank for default): ").strip() or None
-    bpf = input("BPF filter (leave blank to use simple filters): ").strip() or None
-    proto = src = dst = sport = dport = None
-    if not bpf:
-        proto = input("Proto (tcp/udp/ip) or blank: ").strip() or None
-        src = input("Source IP or blank: ").strip() or None
-        dst = input("Dest IP or blank: ").strip() or None
-        sport = input("Source port or blank: ").strip() or None
-        dport = input("Dest port or blank: ").strip() or None
-    out = input("Save to pcap filename (leave blank to skip): ").strip() or None
-    return iface, bpf, proto, src, dst, sport, dport, out
+def pretty_bytes(n: int) -> str:
+    for unit in ['B','KB','MB','GB']:
+        if n < 1024.0:
+            return f"{n:.1f}{unit}"
+        n /= 1024.0
+    return f"{n:.1f}TB"
+
+def extract_http_from_payload(payload_bytes: bytes):
+    try:
+        s = payload_bytes.decode('utf-8', errors='replace')
+    except Exception:
+        return None
+    if s.startswith(('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'OPTIONS ', 'HTTP/')):
+        first_line = s.splitlines()[0]
+        return first_line if len(first_line) < 300 else first_line[:300] + '...'
+    if 'HTTP/1.' in s or 'Host:' in s and '\r\n' in s:
+        fl = s.splitlines()[0] if s.splitlines() else s
+        return fl[:300]
+    return None
+
+def packet_summary(pkt: Packet, idx: int = None):
+    ts = datetime.fromtimestamp(pkt.time).strftime("%H:%M:%S.%f")[:-3]
+    length = len(pkt)
+    if IP in pkt:
+        ip = pkt[IP]
+        proto = "IP"
+        extra = ""
+        if TCP in pkt:
+            proto = "TCP"
+            extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
+        elif UDP in pkt:
+            proto = "UDP"
+            extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
+        elif ICMP in pkt:
+            proto = "ICMP"
+        s = f"{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B"
+    else:
+        s = f"{ts} NON-IP {length}B"
+    if idx is not None:
+        return f"[{idx}] {s}"
+    return s
+
 
 def main():
+    #collect arguments from the user
     parser = argparse.ArgumentParser(description="Packet Sniffer with Analysis (Wireshark-Lite)")
     parser.add_argument('--iface', '-i', help='Interface to capture on', default=None)
     parser.add_argument('--bpf', help='BPF/libpcap filter string', default=None)
@@ -392,10 +394,15 @@ def main():
     parser.add_argument('--out', help='Write capture to pcap file on exit', default=None)
     args = parser.parse_args()
 
+    #if there were arguments provided through the CLI, use them, if not, enter the interactive prompts
     if len(sys.argv) == 1:
-        # interactive prompts if no args
+
+        # interactive prompt values if there are no args
         iface, bpf, proto, src, dst, sport, dport, out = interactive_prompts()
+
     else:
+
+        # CLI arguments if there were any
         iface = args.iface
         bpf = args.bpf
         proto = args.proto
@@ -405,6 +412,7 @@ def main():
         dport = args.dport
         out = args.out
 
+    #define your instance of the controller (class)
     controller = SnifferController(iface=iface, bpf=bpf, proto=proto, src=src, dst=dst, sport=sport, dport=dport)
 
     # start capture thread (it will wait until 'start' command sets the run_flag)
@@ -416,6 +424,7 @@ def main():
 
     # by default start capture immediately
     controller.start()
+
     print("Capture running. Type 'stop' to pause capture, 'status' to display summary, 'quit' to exit.")
 
     try:
@@ -436,6 +445,8 @@ def main():
     # save if requested on CLI
     if out:
         controller.save_pcap(out)
+
+    exit()
 
 if __name__ == '__main__':
     main()

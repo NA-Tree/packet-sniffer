@@ -98,6 +98,10 @@ def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
             return False
     return lfilter
 
+# ----------------------
+# output helpers
+# ----------------------
+
 def isHTTP(pkt=None):
     if TCP in pkt:
         tcp = pkt[TCP]
@@ -110,7 +114,6 @@ def isHTTP(pkt=None):
             return False
     else:
         return False
-
 
 def liveOutput(number=0, pkt=None):
     if IP in pkt:
@@ -139,8 +142,6 @@ def liveOutput(number=0, pkt=None):
     else:
         s = f"\n[{number}]\t(No IP layer)\t({proto})"
     return s
-
-
 
 
 # ----------------------
@@ -428,7 +429,7 @@ def extract_http_from_payload(payload_bytes: bytes):
 def packet_summary(pkt: Packet, idx: int = None):
     ts = datetime.fromtimestamp(pkt.time).strftime("%H:%M:%S.%f")[:-3]
     length = len(pkt)
-        
+
     if IP in pkt:
         ip = pkt[IP]
         proto = "IP"
@@ -437,19 +438,24 @@ def packet_summary(pkt: Packet, idx: int = None):
         if isHTTP(pkt):
             proto = "HTTP"
             extra = ""
-            return f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{pkt[TCP].load.decode()}"
+            # return f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{pkt[TCP].load.decode()}"
+            payload_text = pkt[TCP].load.decode()
         elif TCP in pkt:
             proto = "TCP"
             extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
+            payload_text = bytes(pkt.lastlayer()).decode(errors="ignore")
         elif UDP in pkt:
             proto = "UDP"
             extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
+            payload_text = bytes(pkt.lastlayer()).decode(errors="ignore")
         elif ICMP in pkt:
             proto = "ICMP"
         else:
             proto = "OTHER"
 
-        s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n"
+        # s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n"
+        s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{payload_text}"
+
 
     else:
         s = f"{ts} NON-IP {length}B"

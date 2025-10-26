@@ -267,9 +267,9 @@ class SnifferController:
                 print(f"Invalid index {idx}; stored packets count = {len(self.analyzer.packets)}")
                 return
             pkt = self.analyzer.packets[idx]
+
         # print a parsed breakdown
-        print("\n=== Packet Detail ===")
-        print(packet_summary(pkt, idx))
+        print("\n=== Packet Detail ===\n")
         if IP in pkt:
             ip = pkt[IP]
             print(f"IP: version={ip.version} ihl={ip.ihl} tos={ip.tos} len={ip.len} id={ip.id} ttl={ip.ttl} proto={ip.proto}")
@@ -295,6 +295,8 @@ class SnifferController:
                 print(f"ICMP: type={ic.type} code={ic.code} chksum={ic.chksum}")
         else:
             print("Non-IP packet - raw length:", len(pkt))
+
+        print(packet_summary(pkt, idx))
         print("=====================\n")
 
 # ----------------------
@@ -381,7 +383,8 @@ def packet_summary(pkt: Packet, idx: int = None):
             extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
         elif ICMP in pkt:
             proto = "ICMP"
-        s = f"{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B"
+
+        s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{pkt[proto].load.decode()}"
     else:
         s = f"{ts} NON-IP {length}B"
     if idx is not None:

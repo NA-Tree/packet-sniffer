@@ -186,7 +186,7 @@ class SnifferController:
     def _process(self, pkt):
         # called for each packet by sniff
         self.analyzer.feed(pkt)
-        if self._pbar:
+        if self._pbar is not None:
             self._pbar.update(1)
         # periodically print a live summary
         if self.analyzer.total % 50 == 0:
@@ -220,7 +220,7 @@ class SnifferController:
                     print(f"\n[sniff error] {e}")
                     time.sleep(0.5)
         finally:
-            if self._pbar:
+            if self._pbar is not None:
                 self._pbar.close()
                 self._pbar = None
     def start_capture_thread(self):

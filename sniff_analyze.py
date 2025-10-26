@@ -47,7 +47,8 @@ def interactive_prompts():
         sport = input("Source port or blank: ").strip() or None
         dport = input("Dest port or blank: ").strip() or None
     out = input("Save to pcap filename (leave blank to skip): ").strip() or None
-    return iface, bpf, proto, src, dst, sport, dport, out
+    liveFeed = input("live feed? (blank for no): ").strip() or None
+    return iface, bpf, proto, src, dst, sport, dport, out, liveFeed
 
 # ----------------------
 # Filters
@@ -109,14 +110,16 @@ class Analyzer:
         self.tcp_flows = defaultdict(lambda: {'pkts':0,'bytes':0})
         self.http_candidates = []   # tuples (iso-ts, src, dst, summary)
         self.packets = []           # store scapy packets for details / pcap
-    def feed(self, pkt: Packet):
+    def feed(self, pkt: Packet, liveFeed=None):
         with self.lock:
             self.total += 1
             # store full packet
             self.packets.append(pkt)
 
-            #output the packets with their number
-            print(f"\n{len(self.packets)}", pkt)
+
+            if(liveFeed is not None and liveFeed != "no"):
+                #output the packets with their number
+                print(f"\n{len(self.packets)}", pkt)
 
             # if IP
             if IP in pkt:
@@ -178,7 +181,7 @@ class Analyzer:
 # Sniffer Controller
 # ----------------------
 class SnifferController:
-    def __init__(self, iface=None, bpf=None, proto=None, src=None, dst=None, sport=None, dport=None):
+    def __init__(self, iface=None, bpf=None, proto=None, src=None, dst=None, sport=None, dport=None, liveFeed=None):
         self.iface = iface
         self.bpf = bpf
         self.lfilter = None if bpf else build_lfilter(proto, src, dst, sport, dport)
@@ -187,9 +190,10 @@ class SnifferController:
         self._stop_event = threading.Event() # when set -> request exit of loop
         self._sniff_thread = None
         self._pbar = None
+        self.liveFeed = liveFeed
     def _process(self, pkt):
         # called for each packet by sniff
-        self.analyzer.feed(pkt)
+        self.analyzer.feed(pkt, liveFeed=self.liveFeed)
         if self._pbar is not None:
             self._pbar.update(1)
         # periodically print a live summary
@@ -402,7 +406,7 @@ def main():
     if len(sys.argv) == 1:
 
         # interactive prompt values if there are no args
-        iface, bpf, proto, src, dst, sport, dport, out = interactive_prompts()
+        iface, bpf, proto, src, dst, sport, dport, out, liveFeed = interactive_prompts()
 
     else:
 
@@ -417,7 +421,7 @@ def main():
         out = args.out
 
     #define your instance of the controller (class)
-    controller = SnifferController(iface=iface, bpf=bpf, proto=proto, src=src, dst=dst, sport=sport, dport=dport)
+    controller = SnifferController(iface=iface, bpf=bpf, proto=proto, src=src, dst=dst, sport=sport, dport=dport, liveFeed=liveFeed)
 
     # start capture thread (it will wait until 'start' command sets the run_flag)
     controller.start_capture_thread()

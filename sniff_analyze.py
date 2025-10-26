@@ -30,6 +30,7 @@ from datetime import datetime
 
 from scapy.all import sniff, wrpcap, Raw
 from scapy.layers.inet import IP, TCP, UDP, ICMP
+from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
 from scapy.packet import Packet
 from tqdm import tqdm
 
@@ -97,6 +98,51 @@ def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
             return False
     return lfilter
 
+def isHTTP(pkt=None):
+    if TCP in pkt:
+        tcp = pkt[TCP]
+
+        # Check if payload starts like HTTP
+        raw = bytes(tcp.payload).decode(errors="ignore")
+        if raw.startswith(("GET ", "POST ", "HEAD ", "PUT ", "DELETE ", "HTTP/")):
+            return True
+        else:
+            return False
+    else:
+        return False
+
+
+def liveOutput(number=0, pkt=None):
+    if IP in pkt:
+        ip = pkt[IP]
+        proto = "IP"
+        extra = ""
+
+        if isHTTP(pkt):
+            proto = "HTTP"
+        elif TCP in pkt:
+            extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
+            proto = "TCP"
+        elif UDP in pkt:
+            proto = "UDP"
+            extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
+        elif ICMP in pkt:
+            proto = "ICMP"
+        else:
+            proto = "OTHER"
+    else:
+        proto = "NON-IP"
+        ip = None
+
+    if ip:
+        s = f"\n[{number}]\t{ip.src}:{getattr(ip, 'sport', '?')} -> {ip.dst}:{getattr(ip, 'dport', '?')}   \t({proto})\t{extra}"
+    else:
+        s = f"\n[{number}]\t(No IP layer)\t({proto})"
+    return s
+
+
+
+
 # ----------------------
 # Analyzer
 # ----------------------
@@ -119,14 +165,19 @@ class Analyzer:
 
             if(liveFeed is not None and liveFeed != "no"):
                 #output the packets with their number
-                print(f"\n{len(self.packets)}", pkt)
+                # print(len(self.packets), pkt)
+                outputString = liveOutput(len(self.packets), pkt)
+                print(outputString)
 
             # if IP
             if IP in pkt:
                 ip = pkt[IP]
                 self.src_counts[ip.src] += 1
                 self.dst_counts[ip.dst] += 1
-                if TCP in pkt:
+                
+                if isHTTP(pkt):
+                    self.proto_counts['HTTP'] += 1
+                elif TCP in pkt:
                     self.proto_counts['TCP'] += 1
                     tcp = pkt[TCP]
                     key = (ip.src, tcp.sport, ip.dst, tcp.dport)
@@ -274,7 +325,13 @@ class SnifferController:
             ip = pkt[IP]
             print(f"IP: version={ip.version} ihl={ip.ihl} tos={ip.tos} len={ip.len} id={ip.id} ttl={ip.ttl} proto={ip.proto}")
             print(f" src={ip.src} dst={ip.dst}")
-            if TCP in pkt:
+            if HTTPRequest in pkt:
+                req = pkt[HTTPRequest]
+                print(f"HTTP Request: Method={req.Method.decode()} Host={req.Host.decode()} Path={req.Path.decode()}")
+            elif HTTPResponse in pkt:
+                resp = pkt[HTTPResponse]
+                print(f"HTTP Response: Status={resp.Status_Code.decode()} Reason={resp.Reason_Phrase.decode()}")
+            elif TCP in pkt:
                 t = pkt[TCP]
                 print(f"TCP: sport={t.sport} dport={t.dport} seq={t.seq} ack={t.ack} flags={t.flags} win={t.window}")
                 if Raw in pkt:
@@ -371,11 +428,17 @@ def extract_http_from_payload(payload_bytes: bytes):
 def packet_summary(pkt: Packet, idx: int = None):
     ts = datetime.fromtimestamp(pkt.time).strftime("%H:%M:%S.%f")[:-3]
     length = len(pkt)
+        
     if IP in pkt:
         ip = pkt[IP]
         proto = "IP"
         extra = ""
-        if TCP in pkt:
+        
+        if isHTTP(pkt):
+            proto = "HTTP"
+            extra = ""
+            return f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{pkt[TCP].load.decode()}"
+        elif TCP in pkt:
             proto = "TCP"
             extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
         elif UDP in pkt:
@@ -383,8 +446,11 @@ def packet_summary(pkt: Packet, idx: int = None):
             extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
         elif ICMP in pkt:
             proto = "ICMP"
+        else:
+            proto = "OTHER"
 
-        s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n\n=== PAYLOAD ===\n{pkt[proto].load.decode()}"
+        s = f"\n{ts} {ip.src} -> {ip.dst} {proto}/{extra} {length}B\n"
+
     else:
         s = f"{ts} NON-IP {length}B"
     if idx is not None:

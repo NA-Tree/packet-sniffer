@@ -114,6 +114,10 @@ class Analyzer:
             self.total += 1
             # store full packet
             self.packets.append(pkt)
+
+            #output the packets with their number
+            print(f"\n{len(self.packets)}", pkt)
+
             # if IP
             if IP in pkt:
                 ip = pkt[IP]
@@ -193,7 +197,7 @@ class SnifferController:
             most = self.analyzer.proto_counts.most_common(1)
             if most:
                 top_proto, top_cnt = most[0]
-                print(f"\n[Live] pkts={self.analyzer.total} top_proto={top_proto} ({top_cnt})")
+                print(f"\n[Live] pkts={self.analyzer.total} top_proto={top_proto} ({top_cnt})\n")
     def _sniff_loop(self):
         try:
             # create progress bar when running

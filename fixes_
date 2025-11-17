@@ -124,7 +124,7 @@ class PacketSniffer:
             print("\n============================")
             print(f" FULL PACKET DETAILS ({pkt_num})")
             print("============================\n")
-            pkt.show()     # ⭐ Scapy's full Wireshark-style breakdown
+            pkt.show()     #   full Wireshark-style breakdown
             print("============================\n")
 
     def _sniff_loop(self):

@@ -31,6 +31,7 @@ from datetime import datetime
 from scapy.all import sniff, wrpcap, Raw
 from scapy.layers.inet import IP, TCP, UDP, ICMP
 from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
+from scapy.layers.dns import DNS
 from scapy.packet import Packet
 from tqdm import tqdm
 
@@ -42,7 +43,7 @@ def interactive_prompts():
     bpf = input("BPF filter (leave blank to use simple filters): ").strip() or None
     proto = src = dst = sport = dport = None
     if not bpf:
-        proto = input("Proto (tcp/udp/ip) or blank: ").strip() or None
+        proto = input("Proto (tcp/udp/ip/dns) or blank: ").strip() or None
         src = input("Source IP or blank: ").strip() or None
         dst = input("Dest IP or blank: ").strip() or None
         sport = input("Source port or blank: ").strip() or None
@@ -74,6 +75,10 @@ def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
                 if proto == 'udp' and UDP not in pkt:
                     return False
                 if proto == 'ip' and IP not in pkt:
+                    return False
+                if proto == 'dns' and DNS not in pkt:
+                    return False
+                if proto == 'http' and HTTP not in pkt:
                     return False
             if sport:
                 try:
@@ -126,6 +131,9 @@ def liveOutput(number=0, pkt=None):
         elif TCP in pkt:
             extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
             proto = "TCP"
+        elif DNS in pkt:
+            proto = "DNS"
+            extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
         elif UDP in pkt:
             proto = "UDP"
             extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
@@ -189,6 +197,8 @@ class Analyzer:
                         http_s = extract_http_from_payload(payload)
                         if http_s:
                             self.http_candidates.append((datetime.fromtimestamp(pkt.time).isoformat(), ip.src, ip.dst, http_s))
+                elif DNS in pkt:
+                    self.proto_counts['DNS'] += 1
                 elif UDP in pkt:
                     self.proto_counts['UDP'] += 1
                 elif ICMP in pkt:
@@ -469,7 +479,7 @@ def main():
     parser = argparse.ArgumentParser(description="Packet Sniffer with Analysis (Wireshark-Lite)")
     parser.add_argument('--iface', '-i', help='Interface to capture on', default=None)
     parser.add_argument('--bpf', help='BPF/libpcap filter string', default=None)
-    parser.add_argument('--proto', help='Filter by proto: tcp/udp/ip (only if --bpf not used)', default=None)
+    parser.add_argument('--proto', help='Filter by proto: tcp/udp/ip/dns (only if --bpf not used)', default=None)
     parser.add_argument('--src', help='Filter by source IP (only if --bpf not used)', default=None)
     parser.add_argument('--dst', help='Filter by dest IP (only if --bpf not used)', default=None)
     parser.add_argument('--sport', help='Filter by source port (only if --bpf not used)', default=None)

@@ -267,7 +267,7 @@ class SnifferController:
     def _sniff_loop(self):
         try:
             # create progress bar when running
-            self._pbar = tqdm(desc="Capturing (type 'stop' to pause, 'quit' to exit)", unit="pkt")
+            self._pbar = tqdm(desc="Capturing (type 'stop' to pause, 'quit' to exit)", unit="pkt", disable=True)
             while not self._stop_event.is_set():
                 if not self._run_flag.is_set():
                     time.sleep(0.2)

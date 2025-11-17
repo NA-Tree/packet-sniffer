@@ -25,7 +25,7 @@ from datetime import datetime
 
 from scapy.all import sniff, wrpcap, Raw
 from scapy.layers.inet import IP, TCP, UDP, ICMP
-from scapy.layers.http import HTTPRequest, HTTPResponse
+from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
 from scapy.layers.dns import DNS
 from tqdm import tqdm
 
@@ -36,7 +36,7 @@ def interactive_prompts():
     bpf = input("BPF filter (leave blank to use simple filters): ").strip() or None
     proto = src = dst = sport = dport = None
     if not bpf:
-        proto = input("Proto (tcp/udp/ip) or blank: ").strip() or None
+        proto = input("Proto (tcp/udp/ip/dns) or blank: ").strip() or None
         src = input("Source IP or blank: ").strip() or None
         dst = input("Dest IP or blank: ").strip() or None
         sport = input("Source port or blank: ").strip() or None
@@ -67,6 +67,10 @@ def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
                 if proto == 'udp' and UDP not in pkt:
                     return False
                 if proto == 'ip' and IP not in pkt:
+                    return False
+                if proto == 'dns' and DNS not in pkt:
+                    return False
+                if proto == 'http' and HTTP not in pkt:
                     return False
             if sport:
                 s = int(sport)
@@ -108,6 +112,9 @@ def liveOutput(number=0, pkt=None):
         elif TCP in pkt:
             proto = "TCP"
             extra = f"{pkt[TCP].sport}->{pkt[TCP].dport}"
+        elif DNS in pkt:
+            proto = "DNS"
+            extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
         elif UDP in pkt:
             proto = "UDP"
             extra = f"{pkt[UDP].sport}->{pkt[UDP].dport}"
@@ -160,6 +167,8 @@ class Analyzer:
                     key = (ip.src, tcp.sport, ip.dst, tcp.dport)
                     self.tcp_flows[key]["pkts"] += 1
                     self.tcp_flows[key]["bytes"] += len(pkt)
+                elif DNS in pkt:
+                    self.proto_counts['DNS'] += 1
                 elif UDP in pkt:
                     self.proto_counts["UDP"] += 1
                 elif ICMP in pkt:
@@ -213,7 +222,7 @@ class SnifferController:
 
     def _process(self, pkt):
         self.analyzer.feed(pkt, liveFeed=self.liveFeed)
-        if self._pbar:
+        if self._pbar is not None:
             self._pbar.update(1)
 
     def _sniff_loop(self):
@@ -240,7 +249,7 @@ class SnifferController:
                     print(f"[sniff error] {e}")
                     time.sleep(0.5)
         finally:
-            if self._pbar:
+            if self._pbar is not None:
                 self._pbar.close()
 
     def start_capture_thread(self):

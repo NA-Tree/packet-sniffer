@@ -1,0 +1,136 @@
+from scapy.all import sniff, IP, TCP, UDP, DNS, Raw
+import threading
+import sys
+import time
+
+class PacketSniffer:
+    def __init__(self, interface=None):
+        self.interface = interface
+        self.running = False
+        self.thread = None
+
+        # Filters
+        self.filter_proto = None
+        self.filter_src = None
+        self.filter_dst = None
+        self.filter_port = None
+
+        self.packet_count = 0
+
+    def set_filters(self):
+        print("\n--- Packet Filter Setup (Press Enter to skip a filter) ---")
+
+        proto = input("Protocol (tcp / udp / dns) : ").strip().lower()
+        src_ip = input("Source IP filter : ").strip()
+        dst_ip = input("Destination IP filter : ").strip()
+        port = input("Port filter : ").strip()
+
+        self.filter_proto = proto if proto else None
+        self.filter_src = src_ip if src_ip else None
+        self.filter_dst = dst_ip if dst_ip else None
+        self.filter_port = int(port) if port.isdigit() else None
+
+        print("\nFilters set. Starting sniff...\n")
+
+    def filter_packet(self, pkt):
+        """Apply user filters before printing."""
+        if IP in pkt:
+
+            if self.filter_src and pkt[IP].src != self.filter_src:
+                return False
+
+            if self.filter_dst and pkt[IP].dst != self.filter_dst:
+                return False
+
+        if self.filter_proto:
+            if self.filter_proto == "tcp" and TCP not in pkt:
+                return False
+            if self.filter_proto == "udp" and UDP not in pkt:
+                return False
+            if self.filter_proto == "dns" and DNS not in pkt:
+                return False
+
+        if self.filter_port:
+            if TCP in pkt:
+                if pkt[TCP].sport != self.filter_port and pkt[TCP].dport != self.filter_port:
+                    return False
+            if UDP in pkt:
+                if pkt[UDP].sport != self.filter_port and pkt[UDP].dport != self.filter_port:
+                    return False
+
+        return True
+
+    def analyze_packet(self, pkt):
+        """Print readable packet data."""
+        self.packet_count += 1
+
+        if IP in pkt:
+            src = pkt[IP].src
+            dst = pkt[IP].dst
+        else:
+            src = dst = "N/A"
+
+        # Basic output
+        print(f"[{self.packet_count}] {src} -> {dst}", end=" ")
+
+        if TCP in pkt:
+            print(f"(TCP : {pkt[TCP].sport} -> {pkt[TCP].dport})", end=" ")
+
+        elif UDP in pkt:
+            print(f"(UDP : {pkt[UDP].sport} -> {pkt[UDP].dport})", end=" ")
+
+        # DNS Analysis
+        if DNS in pkt and pkt[DNS].qd:
+            try:
+                query = pkt[DNS].qd.qname.decode()
+                print(f"[DNS Query: {query}]", end=" ")
+            except:
+                pass
+
+        # HTTP Analysis (Very basic)
+        if TCP in pkt and Raw in pkt:
+            payload = pkt[Raw].load
+            try:
+                text = payload.decode(errors="ignore")
+                if "HTTP" in text or "GET " in text:
+                    print(f"[HTTP] {text.splitlines()[0]}", end=" ")
+            except:
+                pass
+
+        print()  # newline
+
+    def _sniff_loop(self):
+        """Internal sniff loop running in a thread."""
+        def process(pkt):
+            if self.filter_packet(pkt):
+                self.analyze_packet(pkt)
+
+        sniff(iface=self.interface, prn=process, store=False)
+
+    def start(self):
+        self.running = True
+        self.set_filters()
+
+        print("Starting capture... Press CTRL+C to stop.\n")
+
+        self.thread = threading.Thread(target=self._sniff_loop)
+        self.thread.daemon = True
+        self.thread.start()
+
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nStopping sniff...")
+            self.running = False
+            sys.exit(0)
+
+
+if __name__ == "__main__":
+    print("=== Simple Packet Sniffer with Analysis ===")
+    iface = input("Enter network interface (Press Enter for default): ").strip()
+    iface = iface if iface else None
+
+    sniffer = PacketSniffer(interface=iface)
+    sniffer.start()
+#C:\Users\harip\Downloads\version3.py

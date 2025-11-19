@@ -3,8 +3,6 @@
 
 ## Known issues:
 
-* the message of the form "Capturing (type 'stop' to pause, 'quit' to exit): 51pkt [00:05,  7.18pkt/s]" is present many times throughout the process and gets annoying
-
 * when using the port filters and a port is unkown, it will still appear
 
 ## things to do : 
@@ -13,6 +11,6 @@
 
 4- filter the ports with no port number 
 5 -  add the save the selected packet into file if user like to  save 
-
+6- record a video of the the demonstration of the project
 
 5 -  

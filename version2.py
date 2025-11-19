@@ -80,9 +80,14 @@ def build_lfilter(proto=None, src=None, dst=None, sport=None, dport=None):
                     return False
             if dport:
                 d = int(dport)
-                if TCP in pkt and pkt[TCP].dport != d:
-                    return False
-                if UDP in pkt and pkt[UDP].dport != d:
+                if TCP in pkt or UDP in pkt:
+                    if TCP in pkt and pkt[TCP].dport == d:
+                        return True
+                    elif UDP in pkt and pkt[UDP].dport == d:
+                        return True
+                    else:
+                        return False
+                else:
                     return False
             return True
         except Exception:

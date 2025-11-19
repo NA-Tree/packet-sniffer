@@ -9,6 +9,9 @@
 
 ## things to do : 
 1- need to make it look good--> a gui or a window that shows the outputs instead of terminal which is scary ----> priority 3 
-2- check if tqdm thing ---> progress bar variable is popping up i dont need that showing up in middle ----> priority 1 ---> if useful put it on top of the gui window 
-3- the detail window  fro the detail 7,8,9 printing same thing ? ---> priority 2 4
+ 
 
+4- filter the ports with no port number 
+5 -  
+
+5 -  

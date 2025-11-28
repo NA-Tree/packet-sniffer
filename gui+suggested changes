@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-sniff_analyze_gui.py - Packet Sniffer with GUI (Wireshark-style)
+sniff_analyze_gui.py - Packet Sniffer with GUI (Enhanced Version)
 
 Features:
  - Simple GUI with packet list and detail view
+ - Protocol filter dropdown (DNS, HTTP, HTTPS, SMTP, TCP, UDP, ALL)
  - Start/Stop/Save/Clear buttons
  - Click packet to see details
  - Save all or save selected packet
  - Live packet capture display
+ - Enhanced packet detailing from CLI version
 
 Usage:
   sudo python3 sniff_analyze_gui.py
@@ -27,7 +29,7 @@ from scapy.layers.dns import DNS
 from scapy.layers.l2 import ARP
 
 
-# ---------------------- Helper Functions ----------------------
+# ---------------------- Helper Functions (from CLI version) ----------------------
 def isHTTP(pkt):
     if TCP in pkt:
         try:
@@ -36,6 +38,32 @@ def isHTTP(pkt):
         except:
             return False
     return False
+
+
+def get_http_info(pkt):
+    """Extract HTTP method and path from packet"""
+    try:
+        raw = bytes(pkt[TCP].payload).decode(errors="ignore")
+        lines = raw.split('\r\n')
+        if lines:
+            return lines[0][:80]
+    except:
+        pass
+    return ""
+
+
+def get_dns_info(pkt):
+    """Extract DNS query information"""
+    try:
+        if DNS in pkt and pkt[DNS].qd:
+            qname = pkt[DNS].qd.qname.decode(errors='ignore').rstrip('.')
+            qtype = pkt[DNS].qd.qtype
+            type_map = {1: 'A', 2: 'NS', 5: 'CNAME', 15: 'MX', 16: 'TXT', 28: 'AAAA'}
+            qtype_str = type_map.get(qtype, str(qtype))
+            return f"{qname} ({qtype_str})"
+    except:
+        pass
+    return ""
 
 
 def get_protocol(pkt):
@@ -48,6 +76,8 @@ def get_protocol(pkt):
         elif TCP in pkt:
             if pkt[TCP].sport == 25 or pkt[TCP].dport == 25:
                 return "SMTP"
+            elif pkt[TCP].sport == 443 or pkt[TCP].dport == 443:
+                return "HTTPS"
             return "TCP"
         elif UDP in pkt:
             return "UDP"
@@ -82,10 +112,18 @@ def get_packet_info(pkt):
                 if pkt[TCP].flags.R: flags.append("RST")
                 if flags:
                     info += f" [{','.join(flags)}]"
+                # Add HTTP/HTTPS info
+                if isHTTP(pkt):
+                    http_info = get_http_info(pkt)
+                    if http_info:
+                        info += f" {http_info[:40]}"
             elif UDP in pkt:
                 info = f"{pkt[UDP].sport} → {pkt[UDP].dport}"
-            elif DNS in pkt and pkt[DNS].qd:
-                info = pkt[DNS].qd.qname.decode(errors='ignore').rstrip('.')
+                # Add DNS info
+                if DNS in pkt:
+                    dns_info = get_dns_info(pkt)
+                    if dns_info:
+                        info += f" {dns_info}"
             elif ICMP in pkt:
                 type_map = {0: 'Echo Reply', 8: 'Echo Request', 3: 'Dest Unreachable'}
                 info = type_map.get(pkt[ICMP].type, f"Type {pkt[ICMP].type}")
@@ -104,11 +142,43 @@ def get_packet_info(pkt):
         return (datetime.now().strftime("%H:%M:%S.%f")[:-3], "Error", "Error", "Error", 0, "Parse Error")
 
 
+def get_tcp_flags_str(tcp):
+    """Return a readable string of TCP flags"""
+    flags = []
+    if tcp.flags.S: flags.append("SYN")
+    if tcp.flags.A: flags.append("ACK")
+    if tcp.flags.F: flags.append("FIN")
+    if tcp.flags.R: flags.append("RST")
+    if tcp.flags.P: flags.append("PSH")
+    if tcp.flags.U: flags.append("URG")
+    return ", ".join(flags) if flags else "None"
+
+
+def get_payload_preview(pkt, max_len=200):
+    """Extract and preview packet payload"""
+    if Raw in pkt:
+        try:
+            raw_data = bytes(pkt[Raw].load)
+            try:
+                text = raw_data.decode('utf-8', errors='ignore')
+                preview = text[:max_len].replace('\r', '\\r').replace('\n', '\\n')
+                if len(text) > max_len:
+                    preview += "..."
+                return preview
+            except:
+                hex_str = raw_data[:max_len].hex()
+                if len(raw_data) > max_len:
+                    hex_str += "..."
+                return f"HEX: {hex_str}"
+        except:
+            pass
+    return "(No payload)"
+
+
 def get_packet_detail(pkt):
-    """Generate detailed packet information"""
+    """Generate detailed packet information (from CLI version)"""
     lines = []
     
-    # Timestamp and length
     ts = datetime.fromtimestamp(pkt.time).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     lines.append(f"═══════════════════════════════════════════════════════════════")
     lines.append(f"PACKET DETAILS")
@@ -156,19 +226,11 @@ def get_packet_detail(pkt):
             lines.append(f"Dest Port:       {tcp.dport}")
             lines.append(f"Sequence:        {tcp.seq}")
             lines.append(f"Acknowledgment:  {tcp.ack}")
-            
-            flags = []
-            if tcp.flags.S: flags.append("SYN")
-            if tcp.flags.A: flags.append("ACK")
-            if tcp.flags.F: flags.append("FIN")
-            if tcp.flags.R: flags.append("RST")
-            if tcp.flags.P: flags.append("PSH")
-            if tcp.flags.U: flags.append("URG")
-            lines.append(f"Flags:           {', '.join(flags) if flags else 'None'}")
+            lines.append(f"Flags:           {get_tcp_flags_str(tcp)}")
             lines.append(f"Window Size:     {tcp.window}")
             lines.append("")
             
-            # HTTP
+            # HTTP/HTTPS
             if isHTTP(pkt):
                 lines.append(f"── HTTP Content ──")
                 try:
@@ -180,20 +242,20 @@ def get_packet_detail(pkt):
                 except:
                     lines.append("  [Unable to parse HTTP content]")
                 lines.append("")
+            elif tcp.sport == 443 or tcp.dport == 443:
+                lines.append(f"── HTTPS (Encrypted) ──")
+                lines.append("  Content is encrypted and cannot be displayed")
+                lines.append("")
+            
+            # SMTP
+            if tcp.sport == 25 or tcp.dport == 25:
+                lines.append(f"── SMTP Packet ──")
+                lines.append("")
             
             # Payload
             if Raw in pkt:
                 lines.append(f"── Payload Preview ──")
-                try:
-                    raw_data = bytes(pkt[Raw].load)
-                    preview = raw_data[:200]
-                    try:
-                        text = preview.decode('utf-8', errors='ignore')
-                        lines.append(text.replace('\r', '\\r').replace('\n', '\\n'))
-                    except:
-                        lines.append(f"HEX: {preview.hex()}")
-                except:
-                    lines.append("[No payload]")
+                lines.append(get_payload_preview(pkt, 200))
         
         # UDP
         elif UDP in pkt:
@@ -232,16 +294,7 @@ def get_packet_detail(pkt):
             # Payload
             if Raw in pkt:
                 lines.append(f"── Payload Preview ──")
-                try:
-                    raw_data = bytes(pkt[Raw].load)
-                    preview = raw_data[:200]
-                    try:
-                        text = preview.decode('utf-8', errors='ignore')
-                        lines.append(text)
-                    except:
-                        lines.append(f"HEX: {preview.hex()}")
-                except:
-                    lines.append("[No payload]")
+                lines.append(get_payload_preview(pkt, 200))
         
         # ICMP
         elif ICMP in pkt:
@@ -256,6 +309,22 @@ def get_packet_detail(pkt):
                 lines.append(f"Sequence:        {ic.seq}")
     
     return "\n".join(lines)
+
+
+def build_bpf_from_protocol(protocol):
+    """Build BPF filter from protocol selection"""
+    filters = {
+        "DNS": "udp port 53",
+        "HTTP": "tcp port 80",
+        "HTTPS": "tcp port 443",
+        "SMTP": "tcp port 25",
+        "TCP": "tcp",
+        "UDP": "udp",
+        "ICMP": "icmp",
+        "ARP": "arp",
+        "ALL": None
+    }
+    return filters.get(protocol, None)
 
 
 # ---------------------- Packet Sniffer ----------------------
@@ -295,7 +364,7 @@ class PacketSniffer:
                         prn=self._process_packet,
                         store=False,
                         timeout=1,
-                        count=10  # Process in small batches
+                        count=10
                     )
                 except Exception as e:
                     print(f"Capture error: {e}")
@@ -307,7 +376,6 @@ class PacketSniffer:
         """Process captured packet"""
         with self.lock:
             self.packets.append(pkt)
-            # Notify GUI
             self.callback(pkt)
     
     def get_packets(self):
@@ -335,14 +403,10 @@ class PacketSnifferGUI:
         self.root.title("Packet Sniffer")
         self.root.geometry("1200x700")
         
-        # Sniffer instance
         self.sniffer = PacketSniffer(self.on_packet_captured)
         self.packet_count = 0
         
-        # Create UI
         self.create_widgets()
-        
-        # Bind window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
     def create_widgets(self):
@@ -380,14 +444,17 @@ class PacketSnifferGUI:
         self.iface_entry = ttk.Entry(filter_frame, width=15)
         self.iface_entry.pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(filter_frame, text="BPF Filter:").pack(side=tk.LEFT, padx=2)
-        self.bpf_entry = ttk.Entry(filter_frame, width=40)
-        self.bpf_entry.insert(0, "")
+        ttk.Label(filter_frame, text="Protocol Filter:").pack(side=tk.LEFT, padx=(15, 2))
+        self.proto_combo = ttk.Combobox(filter_frame, width=12, state="readonly")
+        self.proto_combo['values'] = ("ALL", "DNS", "HTTP", "HTTPS", "SMTP", "TCP", "UDP", "ICMP", "ARP")
+        self.proto_combo.current(0)
+        self.proto_combo.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(filter_frame, text="Custom BPF:").pack(side=tk.LEFT, padx=(15, 2))
+        self.bpf_entry = ttk.Entry(filter_frame, width=35)
         self.bpf_entry.pack(side=tk.LEFT, padx=2)
         
         ttk.Button(filter_frame, text="Apply Filter", command=self.apply_filter, width=12).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Label(filter_frame, text="(e.g., 'tcp port 80' or 'host 192.168.1.1')").pack(side=tk.LEFT, padx=5)
         
         # ===== Packet List (Top) =====
         list_frame = ttk.Frame(self.root)
@@ -395,11 +462,9 @@ class PacketSnifferGUI:
         
         ttk.Label(list_frame, text="Captured Packets:", font=('Arial', 10, 'bold')).pack(anchor=tk.W)
         
-        # Treeview for packet list
         columns = ("No", "Time", "Source", "Destination", "Protocol", "Length", "Info")
         self.tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=12)
         
-        # Column widths
         self.tree.column("No", width=50, anchor=tk.CENTER)
         self.tree.column("Time", width=100, anchor=tk.W)
         self.tree.column("Source", width=140, anchor=tk.W)
@@ -408,11 +473,9 @@ class PacketSnifferGUI:
         self.tree.column("Length", width=80, anchor=tk.CENTER)
         self.tree.column("Info", width=400, anchor=tk.W)
         
-        # Headers
         for col in columns:
             self.tree.heading(col, text=col)
         
-        # Scrollbars
         vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -421,7 +484,6 @@ class PacketSnifferGUI:
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
         
-        # Bind selection
         self.tree.bind('<<TreeviewSelect>>', self.on_packet_select)
         
         # ===== Packet Detail (Bottom) =====
@@ -438,12 +500,20 @@ class PacketSnifferGUI:
     def start_capture(self):
         """Start packet capture"""
         iface = self.iface_entry.get().strip() or None
-        bpf = self.bpf_entry.get().strip() or None
+        
+        # Get BPF filter (custom or from protocol dropdown)
+        custom_bpf = self.bpf_entry.get().strip()
+        if custom_bpf:
+            bpf = custom_bpf
+        else:
+            protocol = self.proto_combo.get()
+            bpf = build_bpf_from_protocol(protocol)
         
         if self.sniffer.start(iface, bpf):
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
             self.iface_entry.config(state=tk.DISABLED)
+            self.proto_combo.config(state=tk.DISABLED)
             self.update_status("Running")
     
     def stop_capture(self):
@@ -452,18 +522,22 @@ class PacketSnifferGUI:
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
         self.iface_entry.config(state=tk.NORMAL)
+        self.proto_combo.config(state="readonly")
         self.update_status("Stopped")
     
     def apply_filter(self):
         """Apply filter by restarting capture"""
         if self.sniffer.running:
-            # Stop current capture
             self.sniffer.stop()
-            time.sleep(0.5)  # Give it time to stop
+            time.sleep(0.5)
             
-            # Restart with new filter
             iface = self.iface_entry.get().strip() or None
-            bpf = self.bpf_entry.get().strip() or None
+            custom_bpf = self.bpf_entry.get().strip()
+            if custom_bpf:
+                bpf = custom_bpf
+            else:
+                protocol = self.proto_combo.get()
+                bpf = build_bpf_from_protocol(protocol)
             
             if self.sniffer.start(iface, bpf):
                 messagebox.showinfo("Filter Applied", "Capture restarted with new filter")
@@ -476,26 +550,17 @@ class PacketSnifferGUI:
     
     def on_packet_captured(self, pkt):
         """Callback when packet is captured"""
-        # Update from thread-safe context
         self.root.after(0, self._add_packet_to_list, pkt)
     
     def _add_packet_to_list(self, pkt):
-        """Add packet to treeview (called from main thread)"""
-        # FILTER: Only show packets that have port numbers (TCP/UDP)
-        if not (TCP in pkt or UDP in pkt):
-            return  # Skip packets without ports (ICMP, ARP, raw IP, etc.)
-        
+        """Add packet to treeview"""
         self.packet_count += 1
         ts, src, dst, proto, length, info = get_packet_info(pkt)
         
-        # Color coding by protocol
         tag = proto.lower()
         self.tree.insert('', tk.END, values=(self.packet_count, ts, src, dst, proto, length, info), tags=(tag,))
         
-        # Auto-scroll to bottom
         self.tree.yview_moveto(1.0)
-        
-        # Update status
         self.update_status(f"Running")
     
     def on_packet_select(self, event):

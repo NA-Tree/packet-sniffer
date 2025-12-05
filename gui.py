@@ -12,7 +12,7 @@ Features:
  - Enhanced packet detailing from CLI version
 
 Usage:
-  sudo python3 sniff_analyze_gui.py
+  sudo python3 snifARPf_analyze_gui.py
 """
 
 import tkinter as tk

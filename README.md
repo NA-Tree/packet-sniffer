@@ -14,3 +14,10 @@
 6- record a video of the the demonstration of the project
 
 5 -  
+to use the gui :
+- click start
+- select the advanced option and you should see the source port , destination port  filters
+- then click apply - you will get a message box telling the filter is applied
+- then you can follow the icos like click on paket for the expansions and then save or save all and it will save like csv [excel document ]
+-  I am still testing it and will make edits .
+-  

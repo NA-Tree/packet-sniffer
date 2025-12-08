@@ -19,5 +19,5 @@ to use the gui :
 - select the advanced option and you should see the source port , destination port  filters
 - then click apply - you will get a message box telling the filter is applied
 - then you can follow the icos like click on paket for the expansions and then save or save all and it will save like csv [excel document ]
--  I am still testing it and will make edits .
+-  I am still testing it and will make edits - this is skeleton for your reference and confirmation 
 -  

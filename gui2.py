@@ -43,8 +43,8 @@ def get_protocol(pkt):
         if isHTTP(pkt): return "HTTP"
         elif DNS in pkt: return "DNS"
         elif TCP in pkt:
-            if pkt[TCP].sport == 25 or pkt[TCP].dport == 25: return "SMTP"
-            elif pkt[TCP].sport == 443 or pkt[TCP].dport == 443: return "HTTPS"
+            if pkt[TCP].sport == 25 or pkt[TCP].dport == 25: return "TCP (likely SMTP)"
+            elif pkt[TCP].sport == 443 or pkt[TCP].dport == 443: return "TCP (likely HTTPS)"
             return "TCP"
         elif UDP in pkt: return "UDP"
         elif ICMP in pkt: return "ICMP"
@@ -143,12 +143,20 @@ def build_custom_lfilter(proto=None, src=None, dst=None, sport=None, dport=None)
             
             if proto:
                 p = proto.lower()
-                if p == 'tcp' and TCP not in pkt: return False
-                if p == 'udp' and UDP not in pkt: return False
-                if p == 'icmp' and ICMP not in pkt: return False
                 if p == 'dns' and DNS not in pkt: return False
                 if p == 'http' and not isHTTP(pkt): return False
-            
+
+                # make sure to not get any stray HTTP packets
+                if p == 'tcp' and TCP not in pkt: return False
+                if p == 'tcp' and TCP in pkt and isHTTP(pkt): 
+                    return False
+
+                if p == 'udp' and UDP not in pkt: return False
+                if p == 'udp' and UDP in pkt and DNS in pkt: return False
+
+
+                if p == 'icmp' and ICMP not in pkt: return False
+                
             if sport:
                 s = int(sport)
                 if TCP in pkt and pkt[TCP].sport != s: return False

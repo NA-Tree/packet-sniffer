@@ -1,23 +1,25 @@
 # packet-sniffer
+A packet sniffer made in python with Scapy and Tkinter
+## how to use the packet sniffer
+By running the packet_sniffer.py file, you are able to see the application as a GUI.
+<br>
+One common way to run this application is with the following bash command (assuming bash & python 3 is installed)
 
+``` bash
+bash sudo python3 ./packet_sniffer.py
+```
 
-## Known issues:
+or simply running the following with admin priveleges
+``` bash
+python3 ./packet_sniffer.py
+```
 
-* when using the port filters and a port is unkown, it will still appear
+## to use the gui
+1. click start
+2. select the advanced option and you should see the source address/port , destination address/port, and protocol filters (select as desired)
+3. click apply - you will get a message box telling the filter is applied
+4. click start to begin capture and stop to pause capture (clear to start over)
+5. click on a packet to examine its contents in more detail
+6. press the save or save all icons to save as a csv [excel document ]
 
-## things to do : 
-1- need to make it look good--> a gui or a window that shows the outputs instead of terminal which is scary ----> priority 3 
- 
-
-4- filter the ports with no port number 
-5 -  add the save the selected packet into file if user like to  save 
-6- record a video of the the demonstration of the project
-
-5 -  
-to use the gui :
-- click start
-- select the advanced option and you should see the source port , destination port  filters
-- then click apply - you will get a message box telling the filter is applied
-- then you can follow the icos like click on paket for the expansions and then save or save all and it will save like csv [excel document ]
--  I am still testing it and will make edits - this is skeleton for your reference and confirmation 
--  
+* note: this is still underdeveloped for commercial or high scale use and further testing may still be required
